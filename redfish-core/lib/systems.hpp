@@ -1823,12 +1823,14 @@ class SystemActionsReset : public Node
         bool hostCommand;
         if ((resetType == "On") || (resetType == "ForceOn"))
         {
-            command = "xyz.openbmc_project.State.Host.Transition.On";
+            // command = "xyz.openbmc_project.State.Host.Transition.On";
+            command = "xyz.openbmc_project.Control.NF.Power.On";
             hostCommand = true;
         }
         else if (resetType == "ForceOff")
         {
-            command = "xyz.openbmc_project.State.Chassis.Transition.Off";
+            // command = "xyz.openbmc_project.State.Chassis.Transition.Off";
+            command = "xyz.openbmc_project.Control.NF.Power.Off";
             hostCommand = false;
         }
         else if (resetType == "ForceRestart")
@@ -1839,7 +1841,8 @@ class SystemActionsReset : public Node
         }
         else if (resetType == "GracefulShutdown")
         {
-            command = "xyz.openbmc_project.State.Host.Transition.Off";
+            // command = "xyz.openbmc_project.State.Host.Transition.Off";
+            command = "xyz.openbmc_project.Control.NF.Power.Off";
             hostCommand = true;
         }
         else if (resetType == "GracefulRestart")
@@ -1866,6 +1869,17 @@ class SystemActionsReset : public Node
 
         if (hostCommand)
         {
+            /**
+             *  Need to figure out the params in this function.
+             *  Or it will be confused to add our own configurations. 
+             *  @params: 
+             *      handler: 
+             *      service:
+             *      objpath:
+             *      interf:
+             *      method:
+             *      a(InputArgs& ...):
+             */
             crow::connections::systemBus->async_method_call(
                 [asyncResp, resetType](const boost::system::error_code ec) {
                     if (ec)
@@ -1884,8 +1898,10 @@ class SystemActionsReset : public Node
                     }
                     messages::success(asyncResp->res);
                 },
-                "xyz.openbmc_project.State.Host",
-                "/xyz/openbmc_project/state/host0",
+                // xyz.openbmc_project.Control.NF.Power.Off
+                // "xyz.openbmc_project.State.Host",
+                "xyz.openbmc_project.Control.NF",
+                "/xyz/openbmc_project/control/nf/",
                 "org.freedesktop.DBus.Properties", "Set",
                 "xyz.openbmc_project.State.Host", "RequestedHostTransition",
                 std::variant<std::string>{command});
