@@ -1827,7 +1827,7 @@ class SystemActionsReset : public Node
             command = "xyz.openbmc_project.Control.NF.Power.On";
             hostCommand = true;
         }
-        else if (resetType == "ForceOff")
+        else if (resetType == "ForceOff" || resetType == "Off")
         {
             // command = "xyz.openbmc_project.State.Chassis.Transition.Off";
             command = "xyz.openbmc_project.Control.NF.Power.Off";
@@ -1901,9 +1901,9 @@ class SystemActionsReset : public Node
                 // xyz.openbmc_project.Control.NF.Power.Off
                 // "xyz.openbmc_project.State.Host",
                 "xyz.openbmc_project.Control.NF",
-                "/xyz/openbmc_project/control/nf/",
+                "/xyz/openbmc_project/control/nf/slot_11_pwr/attr/Asserted",
                 "org.freedesktop.DBus.Properties", "Set",
-                "xyz.openbmc_project.State.Host", "RequestedHostTransition",
+                "xyz.openbmc_project.Control.NF", "RequestedHostTransition",
                 std::variant<std::string>{command});
         }
         else
@@ -1926,10 +1926,14 @@ class SystemActionsReset : public Node
                     }
                     messages::success(asyncResp->res);
                 },
-                "xyz.openbmc_project.State.Chassis",
-                "/xyz/openbmc_project/state/chassis0",
+                // "xyz.openbmc_project.State.Chassis",
+                // "/xyz/openbmc_project/state/chassis0",
+                // "org.freedesktop.DBus.Properties", "Set",
+                // "xyz.openbmc_project.State.Chassis", "RequestedPowerTransition",
+                "xyz.openbmc_project.Control.NF",
+                "/xyz/openbmc_project/control/nf/slot_11_pwr/attr/Asserted",
                 "org.freedesktop.DBus.Properties", "Set",
-                "xyz.openbmc_project.State.Chassis", "RequestedPowerTransition",
+                "xyz.openbmc_project.Control.NF", "RequestedHostTransition",
                 std::variant<std::string>{command});
         }
     }
@@ -2195,7 +2199,7 @@ class SystemResetActionInfo : public Node
                {"Required", true},
                {"DataType", "String"},
                {"AllowableValues",
-                {"On", "ForceOff", "ForceOn", "ForceRestart", "GracefulRestart",
+                {"On", "Off", "ForceOff", "ForceOn", "ForceRestart", "GracefulRestart",
                  "GracefulShutdown", "PowerCycle", "Nmi"}}}}}};
         res.end();
     }
