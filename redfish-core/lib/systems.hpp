@@ -1900,10 +1900,10 @@ class SystemActionsReset : public Node
                 },
                 // xyz.openbmc_project.Control.NF.Power.Off
                 // "xyz.openbmc_project.State.Host",
-                "xyz.openbmc_project.Control.NF",
-                "/xyz/openbmc_project/control/nf/slot_11_pwr/attr/Asserted",
+                "xyz.openbmc_project.Control.NF.Power",
+                "/xyz/openbmc_project/control/nf/slot_11_pwr/",
                 "org.freedesktop.DBus.Properties", "Set",
-                "xyz.openbmc_project.Control.NF", "RequestedHostTransition",
+                "xyz.openbmc_project.Control.NF.Power", "Asserted",
                 std::variant<std::string>{command});
         }
         else
@@ -1930,10 +1930,10 @@ class SystemActionsReset : public Node
                 // "/xyz/openbmc_project/state/chassis0",
                 // "org.freedesktop.DBus.Properties", "Set",
                 // "xyz.openbmc_project.State.Chassis", "RequestedPowerTransition",
-                "xyz.openbmc_project.Control.NF",
-                "/xyz/openbmc_project/control/nf/slot_11_pwr/attr/Asserted",
+                "xyz.openbmc_project.Control.NF.Power",
+                "/xyz/openbmc_project/control/nf/slot_11_pwr/",
                 "org.freedesktop.DBus.Properties", "Set",
-                "xyz.openbmc_project.Control.NF", "RequestedHostTransition",
+                "xyz.openbmc_project.Control.NF.Power", "Asserted",
                 std::variant<std::string>{command});
         }
     }
