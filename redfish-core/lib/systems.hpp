@@ -1823,12 +1823,14 @@ class SystemActionsReset : public Node
         bool hostCommand;
         if ((resetType == "On") || (resetType == "ForceOn"))
         {
-            command = "xyz.openbmc_project.State.Host.Transition.On";
+            // command = "xyz.openbmc_project.State.Host.Transition.On";
+            command = "xyz.openbmc_project.Control.NF.Power.On";
             hostCommand = true;
         }
-        else if (resetType == "ForceOff")
+        else if (resetType == "ForceOff" || resetType == "Off")
         {
-            command = "xyz.openbmc_project.State.Chassis.Transition.Off";
+            // command = "xyz.openbmc_project.State.Chassis.Transition.Off";
+            command = "xyz.openbmc_project.Control.NF.Power.Off";
             hostCommand = false;
         }
         else if (resetType == "ForceRestart")
@@ -1839,7 +1841,8 @@ class SystemActionsReset : public Node
         }
         else if (resetType == "GracefulShutdown")
         {
-            command = "xyz.openbmc_project.State.Host.Transition.Off";
+            // command = "xyz.openbmc_project.State.Host.Transition.Off";
+            command = "xyz.openbmc_project.Control.NF.Power.Off";
             hostCommand = true;
         }
         else if (resetType == "GracefulRestart")
@@ -1866,6 +1869,17 @@ class SystemActionsReset : public Node
 
         if (hostCommand)
         {
+            /**
+             *  Need to figure out the params in this function.
+             *  Or it will be confused to add our own configurations. 
+             *  @params: 
+             *      handler: 
+             *      service:
+             *      objpath:
+             *      interf:
+             *      method:
+             *      a(InputArgs& ...):
+             */
             crow::connections::systemBus->async_method_call(
                 [asyncResp, resetType](const boost::system::error_code ec) {
                     if (ec)
@@ -1884,10 +1898,12 @@ class SystemActionsReset : public Node
                     }
                     messages::success(asyncResp->res);
                 },
-                "xyz.openbmc_project.State.Host",
-                "/xyz/openbmc_project/state/host0",
+                // xyz.openbmc_project.Control.NF.Power.Off
+                // "xyz.openbmc_project.State.Host",
+                "xyz.openbmc_project.Control.NF.Power",
+                "/xyz/openbmc_project/control/nf/slot_11_pwr",
                 "org.freedesktop.DBus.Properties", "Set",
-                "xyz.openbmc_project.State.Host", "RequestedHostTransition",
+                "xyz.openbmc_project.Control.NF.Power", "Asserted",
                 std::variant<std::string>{command});
         }
         else
@@ -1910,10 +1926,14 @@ class SystemActionsReset : public Node
                     }
                     messages::success(asyncResp->res);
                 },
-                "xyz.openbmc_project.State.Chassis",
-                "/xyz/openbmc_project/state/chassis0",
+                // "xyz.openbmc_project.State.Chassis",
+                // "/xyz/openbmc_project/state/chassis0",
+                // "org.freedesktop.DBus.Properties", "Set",
+                // "xyz.openbmc_project.State.Chassis", "RequestedPowerTransition",
+                "xyz.openbmc_project.Control.NF.Power",
+                "/xyz/openbmc_project/control/nf/slot_11_pwr",
                 "org.freedesktop.DBus.Properties", "Set",
-                "xyz.openbmc_project.State.Chassis", "RequestedPowerTransition",
+                "xyz.openbmc_project.Control.NF.Power", "Asserted",
                 std::variant<std::string>{command});
         }
     }
@@ -2179,7 +2199,7 @@ class SystemResetActionInfo : public Node
                {"Required", true},
                {"DataType", "String"},
                {"AllowableValues",
-                {"On", "ForceOff", "ForceOn", "ForceRestart", "GracefulRestart",
+                {"On", "Off", "ForceOff", "ForceOn", "ForceRestart", "GracefulRestart",
                  "GracefulShutdown", "PowerCycle", "Nmi"}}}}}};
         res.end();
     }
