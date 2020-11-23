@@ -1901,7 +1901,7 @@ class SystemActionsReset : public Node
                 // xyz.openbmc_project.Control.NF.Power.Off
                 // "xyz.openbmc_project.State.Host",
                 "xyz.openbmc_project.Control.NF.Power",
-                "/xyz/openbmc_project/control/nf/slot_11_pwr/",
+                "/xyz/openbmc_project/control/nf/slot_11_pwr",
                 "org.freedesktop.DBus.Properties", "Set",
                 "xyz.openbmc_project.Control.NF.Power", "Asserted",
                 std::variant<std::string>{command});
@@ -1931,7 +1931,7 @@ class SystemActionsReset : public Node
                 // "org.freedesktop.DBus.Properties", "Set",
                 // "xyz.openbmc_project.State.Chassis", "RequestedPowerTransition",
                 "xyz.openbmc_project.Control.NF.Power",
-                "/xyz/openbmc_project/control/nf/slot_11_pwr/",
+                "/xyz/openbmc_project/control/nf/slot_11_pwr",
                 "org.freedesktop.DBus.Properties", "Set",
                 "xyz.openbmc_project.Control.NF.Power", "Asserted",
                 std::variant<std::string>{command});
