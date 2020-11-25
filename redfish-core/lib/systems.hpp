@@ -27,6 +27,8 @@
 
 #include <variant>
 
+#define MAX_NF_BLADE_NUM  16
+
 namespace redfish
 {
 
@@ -1770,8 +1772,15 @@ class SystemsCollection : public Node
                 ifaceArray = nlohmann::json::array();
                 auto& count = asyncResp->res.jsonValue["Members@odata.count"];
                 count = 0;
-                ifaceArray.push_back(
-                    {{"@odata.id", "/redfish/v1/Systems/system"}});
+
+				/*Push NF card blade into systemcollection*/
+				for (int i = 0; i < MAX_NF_BLADE_NUM; i++)
+				{
+				    std::string node = "redfish/v1/Systems/nf_blade_" + 
+						std::to_string(i);
+				    ifaceArray.push_back({{"@odata.id", node.c_str()}});
+				}
+
                 if (!ec)
                 {
                     BMCWEB_LOG_DEBUG << "Hypervisor is available";
@@ -1796,7 +1805,7 @@ class SystemActionsReset : public Node
 {
   public:
     SystemActionsReset(App& app) :
-        Node(app, "/redfish/v1/Systems/system/Actions/ComputerSystem.Reset/")
+        Node(app, "/redfish/v1/Systems/<str>/Actions/ComputerSystem.Reset/", std::string())
     {
         entityPrivileges = {
             {boost::beast::http::verb::post, {{"ConfigureComponents"}}}};
@@ -1808,8 +1817,34 @@ class SystemActionsReset : public Node
      * Analyzes POST body message before sends Reset request data to D-Bus.
      */
     void doPost(crow::Response& res, const crow::Request& req,
-                const std::vector<std::string>&) override
+                const std::vector<std::string>& params) override
     {
+        // Check if there is required param, truly entering this shall be
+        // impossible.
+        if (params.size() != 1)
+        {
+            messages::internalError(res);
+            res.end();
+            return;
+        }
+        const std::string& systemId = params[0];
+
+		const std::string system_temp = "nf_blade_";
+
+		if (systemId.substr(0, system_temp.length()) != system_temp)
+		{
+            messages::internalError(res);
+            res.end();
+            return;
+		}
+
+		if (std::stoi(systemId.substr(system_temp.length())) >= MAX_NF_BLADE_NUM)
+		{
+            messages::internalError(res);
+            res.end();
+            return;
+		}
+
         auto asyncResp = std::make_shared<AsyncResp>(res);
 
         std::string resetType;
@@ -1823,13 +1858,11 @@ class SystemActionsReset : public Node
         bool hostCommand;
         if ((resetType == "On") || (resetType == "ForceOn"))
         {
-            // command = "xyz.openbmc_project.State.Host.Transition.On";
             command = "xyz.openbmc_project.Control.NF.Power.On";
-            hostCommand = true;
+            hostCommand = false;
         }
         else if (resetType == "ForceOff" || resetType == "Off")
         {
-            // command = "xyz.openbmc_project.State.Chassis.Transition.Off";
             command = "xyz.openbmc_project.Control.NF.Power.Off";
             hostCommand = false;
         }
@@ -1841,8 +1874,7 @@ class SystemActionsReset : public Node
         }
         else if (resetType == "GracefulShutdown")
         {
-            // command = "xyz.openbmc_project.State.Host.Transition.Off";
-            command = "xyz.openbmc_project.Control.NF.Power.Off";
+            command = "xyz.openbmc_project.State.Host.Transition.Off";
             hostCommand = true;
         }
         else if (resetType == "GracefulRestart")
@@ -1898,12 +1930,10 @@ class SystemActionsReset : public Node
                     }
                     messages::success(asyncResp->res);
                 },
-                // xyz.openbmc_project.Control.NF.Power.Off
-                // "xyz.openbmc_project.State.Host",
-                "xyz.openbmc_project.Control.NF.Power",
-                "/xyz/openbmc_project/control/nf/slot_11_pwr",
+                "xyz.openbmc_project.State.Host",
+                "/xyz/openbmc_project/state/host0",
                 "org.freedesktop.DBus.Properties", "Set",
-                "xyz.openbmc_project.Control.NF.Power", "Asserted",
+                "xyz.openbmc_project.State.Host", "RequestHostTransition",
                 std::variant<std::string>{command});
         }
         else
@@ -1926,12 +1956,9 @@ class SystemActionsReset : public Node
                     }
                     messages::success(asyncResp->res);
                 },
-                // "xyz.openbmc_project.State.Chassis",
-                // "/xyz/openbmc_project/state/chassis0",
-                // "org.freedesktop.DBus.Properties", "Set",
-                // "xyz.openbmc_project.State.Chassis", "RequestedPowerTransition",
                 "xyz.openbmc_project.Control.NF.Power",
-                "/xyz/openbmc_project/control/nf/slot_11_pwr",
+                "/xyz/openbmc_project/control/nf/slot_" + 
+				  systemId.substr(system_temp.length()) + "_pwr",
                 "org.freedesktop.DBus.Properties", "Set",
                 "xyz.openbmc_project.Control.NF.Power", "Asserted",
                 std::variant<std::string>{command});
@@ -1973,7 +2000,7 @@ class Systems : public Node
     /*
      * Default Constructor
      */
-    Systems(App& app) : Node(app, "/redfish/v1/Systems/system/")
+    Systems(App& app) : Node(app, "/redfish/v1/Systems/<str>/", std::string())
     {
         entityPrivileges = {
             {boost::beast::http::verb::get, {{"Login"}}},
@@ -1989,48 +2016,59 @@ class Systems : public Node
      * Functions triggers appropriate requests on DBus
      */
     void doGet(crow::Response& res, const crow::Request&,
-               const std::vector<std::string>&) override
+               const std::vector<std::string>& params) override
     {
-        res.jsonValue["@odata.type"] = "#ComputerSystem.v1_13_0.ComputerSystem";
-        res.jsonValue["Name"] = "system";
-        res.jsonValue["Id"] = "system";
-        res.jsonValue["SystemType"] = "Physical";
-        res.jsonValue["Description"] = "Computer System";
-        res.jsonValue["ProcessorSummary"]["Count"] = 0;
-        res.jsonValue["ProcessorSummary"]["Status"]["State"] = "Disabled";
-        res.jsonValue["MemorySummary"]["TotalSystemMemoryGiB"] = uint64_t(0);
-        res.jsonValue["MemorySummary"]["Status"]["State"] = "Disabled";
-        res.jsonValue["@odata.id"] = "/redfish/v1/Systems/system";
+        // Check if there is required param, truly entering this shall be
+        // impossible.
+        if (params.size() != 1)
+        {
+            messages::internalError(res);
+            res.end();
+            return;
+        }
+        const std::string& systemId = params[0];
 
-        res.jsonValue["Processors"] = {
+        res.jsonValue["@odata.type"] = "#ComputerSystem.v1_13_0.ComputerSystem";
+        res.jsonValue["Name"] = systemId;
+        res.jsonValue["Id"] = systemId;
+        res.jsonValue["SystemType"] = "Physical";
+        res.jsonValue["Description"] = "NF blade card";
+        res.jsonValue["ProcessorSummary"]["Count"] = 4;
+        res.jsonValue["ProcessorSummary"]["Status"]["State"] = "Enabled";
+        res.jsonValue["MemorySummary"]["TotalSystemMemoryGiB"] = uint64_t(16);
+        res.jsonValue["MemorySummary"]["Status"]["State"] = "Enabled";
+        res.jsonValue["@odata.id"] = "/redfish/v1/Systems/" + systemId;
+
+        /*res.jsonValue["Processors"] = {
             {"@odata.id", "/redfish/v1/Systems/system/Processors"}};
         res.jsonValue["Memory"] = {
             {"@odata.id", "/redfish/v1/Systems/system/Memory"}};
         res.jsonValue["Storage"] = {
-            {"@odata.id", "/redfish/v1/Systems/system/Storage"}};
+            {"@odata.id", "/redfish/v1/Systems/system/Storage"}};*/
 
         res.jsonValue["Actions"]["#ComputerSystem.Reset"] = {
             {"target",
-             "/redfish/v1/Systems/system/Actions/ComputerSystem.Reset"},
+             "/redfish/v1/Systems/" + systemId + "/Actions/ComputerSystem.Reset"},
             {"@Redfish.ActionInfo",
-             "/redfish/v1/Systems/system/ResetActionInfo"}};
+             "/redfish/v1/Systems/" + systemId + "/ResetActionInfo"}};
 
-        res.jsonValue["LogServices"] = {
+        /*res.jsonValue["LogServices"] = {
             {"@odata.id", "/redfish/v1/Systems/system/LogServices"}};
 
         res.jsonValue["Bios"] = {
             {"@odata.id", "/redfish/v1/Systems/system/Bios"}};
 
         res.jsonValue["Links"]["ManagedBy"] = {
-            {{"@odata.id", "/redfish/v1/Managers/bmc"}}};
+            {{"@odata.id", "/redfish/v1/Managers/bmc"}}};*/
 
         res.jsonValue["Status"] = {
             {"Health", "OK"},
             {"State", "Enabled"},
         };
+
         auto asyncResp = std::make_shared<AsyncResp>(res);
 
-        constexpr const std::array<const char*, 4> inventoryForSystems = {
+        /*constexpr const std::array<const char*, 4> inventoryForSystems = {
             "xyz.openbmc_project.Inventory.Item.Dimm",
             "xyz.openbmc_project.Inventory.Item.Cpu",
             "xyz.openbmc_project.Inventory.Item.Drive",
@@ -2053,15 +2091,15 @@ class Systems : public Node
             "xyz.openbmc_project.ObjectMapper", "GetSubTreePaths", "/",
             int32_t(0), inventoryForSystems);
 
-        health->populate();
+        health->populate();*/
 
-        getMainChassisId(asyncResp, [](const std::string& chassisId,
+        /*getMainChassisId(asyncResp, [](const std::string& chassisId,
                                        const std::shared_ptr<AsyncResp>& aRsp) {
             aRsp->res.jsonValue["Links"]["Chassis"] = {
                 {{"@odata.id", "/redfish/v1/Chassis/" + chassisId}}};
-        });
+        });*/
 
-        getLocationIndicatorActive(asyncResp);
+        /*getLocationIndicatorActive(asyncResp);
         // TODO (Gunnar): Remove IndicatorLED after enough time has passed
         getIndicatorLedState(asyncResp);
         getComputerSystem(asyncResp, health);
@@ -2071,9 +2109,9 @@ class Systems : public Node
         getHostWatchdogTimer(asyncResp);
         getPowerRestorePolicy(asyncResp);
         getAutomaticRetry(asyncResp);
-        getLastResetTime(asyncResp);
+        getLastResetTime(asyncResp);*/
 #ifdef BMCWEB_ENABLE_REDFISH_PROVISIONING_FEATURE
-        getProvisioningStatus(asyncResp);
+        //getProvisioningStatus(asyncResp);
 #endif
     }
 
@@ -2171,7 +2209,7 @@ class SystemResetActionInfo : public Node
      * Default Constructor
      */
     SystemResetActionInfo(App& app) :
-        Node(app, "/redfish/v1/Systems/system/ResetActionInfo/")
+        Node(app, "/redfish/v1/Systems/<str>/ResetActionInfo/", std::string())
     {
         entityPrivileges = {
             {boost::beast::http::verb::get, {{"Login"}}},
@@ -2187,11 +2225,19 @@ class SystemResetActionInfo : public Node
      * Functions triggers appropriate requests on DBus
      */
     void doGet(crow::Response& res, const crow::Request&,
-               const std::vector<std::string>&) override
+               const std::vector<std::string>& params) override
     {
+        if (params.size() != 1)
+        {
+            messages::internalError(res);
+            res.end();
+            return;
+        }
+        const std::string& systemId = params[0];
+
         res.jsonValue = {
             {"@odata.type", "#ActionInfo.v1_1_2.ActionInfo"},
-            {"@odata.id", "/redfish/v1/Systems/system/ResetActionInfo"},
+            {"@odata.id", "/redfish/v1/Systems/" + systemId + "/ResetActionInfo"},
             {"Name", "Reset Action Info"},
             {"Id", "ResetActionInfo"},
             {"Parameters",
