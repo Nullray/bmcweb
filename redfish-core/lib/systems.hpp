@@ -1763,38 +1763,45 @@ class SystemsCollection : public Node
             "#ComputerSystemCollection.ComputerSystemCollection";
         res.jsonValue["@odata.id"] = "/redfish/v1/Systems";
         res.jsonValue["Name"] = "Computer System Collection";
+									
+				nlohmann::json& ifaceArray = res.jsonValue["Members"];
+				ifaceArray = nlohmann::json::array();
 
-        crow::connections::systemBus->async_method_call(
-            [asyncResp](const boost::system::error_code ec,
-                        const std::variant<std::string>& /*hostName*/) {
-                nlohmann::json& ifaceArray =
-                    asyncResp->res.jsonValue["Members"];
-                ifaceArray = nlohmann::json::array();
-                auto& count = asyncResp->res.jsonValue["Members@odata.count"];
-                count = 0;
+				auto& count = res.jsonValue["Members@odata.count"];
+				count = 0;
 
-				/*Push NF card blade into systemcollection*/
-				for (int i = 0; i < MAX_NF_BLADE_NUM; i++)
+				for(int i = 0; i < MAX_NF_BLADE_NUM; i++)
 				{
-				    std::string node = "redfish/v1/Systems/nf_blade_" + 
-						std::to_string(i);
-				    ifaceArray.push_back({{"@odata.id", node.c_str()}});
-				}
+					crow::connections::systemBus->async_method_call(
+							[asyncResp, &ifaceArray](const boost::system::error_code ec,
+                        const std::variant<std::string>& property) {
 
-                if (!ec)
-                {
-                    BMCWEB_LOG_DEBUG << "Hypervisor is available";
-                    ifaceArray.push_back(
-                        {{"@odata.id", "/redfish/v1/Systems/hypervisor"}});
-                    count = ifaceArray.size();
-                    return;
-                }
-            },
-            "xyz.openbmc_project.Settings",
-            "/xyz/openbmc_project/network/hypervisor",
-            "org.freedesktop.DBus.Properties", "Get",
-            "xyz.openbmc_project.Network.SystemConfiguration", "HostName");
-    }
+							  if (!ec) {
+								  const std::string* value = 
+									  std::get_if<std::string>(&property);
+
+									std::string nf_attached, status;
+									nf_attached.assign(*value);
+							    size_t pos = nf_attached.find(".");
+								  status.assign(nf_attached.substr(pos + 1, nf_attached.length()));
+
+								  if (status == "true")
+								  {
+								    std::string node = "redfish/v1/Systems/nf_blade_" + 
+									    nf_attached.substr(0, pos);
+										ifaceArray.push_back({{"@odata.id", node.c_str()}});
+								  }
+								}
+								return;
+							},
+							"xyz.openbmc_project.nf.power.manager",
+							"/xyz/openbmc_project/control/nf/blade" 
+							  + std::to_string(i),
+							"org.freedesktop.DBus.Properties", "Get",
+							"xyz.openbmc_project.NF.Blade.Power", "Attached");
+				}
+				count = ifaceArray.size();
+		}
 };
 
 /**
