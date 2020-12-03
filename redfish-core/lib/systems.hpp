@@ -1773,7 +1773,7 @@ class SystemsCollection : public Node
 				for(int i = 0; i < MAX_NF_BLADE_NUM; i++)
 				{
 					crow::connections::systemBus->async_method_call(
-							[asyncResp, &ifaceArray](const boost::system::error_code ec,
+							[asyncResp, &ifaceArray, &count](const boost::system::error_code ec,
                         const std::variant<std::string>& property) {
 
 							  if (!ec) {
@@ -1790,6 +1790,7 @@ class SystemsCollection : public Node
 								    std::string node = "redfish/v1/Systems/nf_blade_" + 
 									    nf_attached.substr(0, pos);
 										ifaceArray.push_back({{"@odata.id", node.c_str()}});
+										count = ifaceArray.size();
 								  }
 								}
 								return;
@@ -1800,7 +1801,6 @@ class SystemsCollection : public Node
 							"org.freedesktop.DBus.Properties", "Get",
 							"xyz.openbmc_project.NF.Blade.Power", "Attached");
 				}
-				count = ifaceArray.size();
 		}
 };
 
@@ -2029,22 +2029,77 @@ class Systems : public Node
         // impossible.
         if (params.size() != 1)
         {
-            messages::internalError(res);
-            res.end();
-            return;
+					messages::internalError(res);
+					res.end();
+					return;
         }
-        const std::string& systemId = params[0];
 
-        res.jsonValue["@odata.type"] = "#ComputerSystem.v1_13_0.ComputerSystem";
-        res.jsonValue["Name"] = systemId;
-        res.jsonValue["Id"] = systemId;
-        res.jsonValue["SystemType"] = "Physical";
-        res.jsonValue["Description"] = "NF blade card";
-        res.jsonValue["ProcessorSummary"]["Count"] = 4;
-        res.jsonValue["ProcessorSummary"]["Status"]["State"] = "Enabled";
-        res.jsonValue["MemorySummary"]["TotalSystemMemoryGiB"] = uint64_t(16);
-        res.jsonValue["MemorySummary"]["Status"]["State"] = "Enabled";
-        res.jsonValue["@odata.id"] = "/redfish/v1/Systems/" + systemId;
+        const std::string& systemId = params[0];
+				std::string systemId_path;
+				std::string delimiter = "_";
+				size_t pos;
+				int format_match = 1;
+
+				systemId_path.assign(params[0]);
+
+				/* set D-Bus object name according to format nf_blade_x */
+				/* change nf_blade_x to nf/bladex */
+        if((pos = systemId_path.find(delimiter)) != std::string::npos)
+					systemId_path.replace(pos, 1, "/");
+
+        if((pos = systemId_path.find(delimiter)) != std::string::npos)
+					systemId_path.erase(pos, 1);
+				else
+					format_match = 0;
+
+				/*check whether such system object is available on D-Bus*/
+        std::shared_ptr<AsyncResp> asyncResp = std::make_shared<AsyncResp>(res);
+				crow::connections::systemBus->async_method_call(
+						[asyncResp, systemId, format_match](const boost::system::error_code ec, 
+							  const std::variant<std::string>& property) {
+
+							if((!ec) && format_match) {
+								const std::string* value = 
+								    std::get_if<std::string>(&property);
+
+								std::string nf_attached, status;
+								nf_attached.assign(*value);
+							  size_t pos = nf_attached.find(".");
+								status.assign(nf_attached.substr(pos + 1, nf_attached.length()));
+
+								if(status == "true")
+								{
+								  asyncResp->res.jsonValue["@odata.type"] = "#ComputerSystem.v1_13_0.ComputerSystem";
+									asyncResp->res.jsonValue["Name"] = systemId;
+									asyncResp->res.jsonValue["Id"] = systemId;
+									asyncResp->res.jsonValue["SystemType"] = "Physical";
+									asyncResp->res.jsonValue["Description"] = "NF blade card";
+									asyncResp->res.jsonValue["ProcessorSummary"]["Count"] = 4;
+									asyncResp->res.jsonValue["ProcessorSummary"]["Status"]["State"] = "Enabled";
+									asyncResp->res.jsonValue["MemorySummary"]["TotalSystemMemoryGiB"] = uint64_t(16);
+									asyncResp->res.jsonValue["MemorySummary"]["Status"]["State"] = "Enabled";
+									asyncResp->res.jsonValue["@odata.id"] = "/redfish/v1/Systems/" + systemId;
+        
+									asyncResp->res.jsonValue["Actions"]["#ComputerSystem.Reset"] = {
+										{"target",
+											"/redfish/v1/Systems/" + systemId + "/Actions/ComputerSystem.Reset"},
+										{"@Redfish.ActionInfo",
+											"/redfish/v1/Systems/" + systemId + "/ResetActionInfo"}};
+
+									asyncResp->res.jsonValue["Status"] = {
+										{"Health", "OK"},
+										{"State", "Enabled"},
+									};
+								  return;
+								}
+							}
+							messages::internalError(asyncResp->res);
+							return;
+					  },
+						"xyz.openbmc_project.nf.power.manager",
+						"/xyz/openbmc_project/control/" + systemId_path,
+						"org.freedesktop.DBus.Properties", "Get",
+						"xyz.openbmc_project.NF.Blade.Power", "Attached");
 
         /*res.jsonValue["Processors"] = {
             {"@odata.id", "/redfish/v1/Systems/system/Processors"}};
@@ -2052,12 +2107,6 @@ class Systems : public Node
             {"@odata.id", "/redfish/v1/Systems/system/Memory"}};
         res.jsonValue["Storage"] = {
             {"@odata.id", "/redfish/v1/Systems/system/Storage"}};*/
-
-        res.jsonValue["Actions"]["#ComputerSystem.Reset"] = {
-            {"target",
-             "/redfish/v1/Systems/" + systemId + "/Actions/ComputerSystem.Reset"},
-            {"@Redfish.ActionInfo",
-             "/redfish/v1/Systems/" + systemId + "/ResetActionInfo"}};
 
         /*res.jsonValue["LogServices"] = {
             {"@odata.id", "/redfish/v1/Systems/system/LogServices"}};
@@ -2067,13 +2116,6 @@ class Systems : public Node
 
         res.jsonValue["Links"]["ManagedBy"] = {
             {{"@odata.id", "/redfish/v1/Managers/bmc"}}};*/
-
-        res.jsonValue["Status"] = {
-            {"Health", "OK"},
-            {"State", "Enabled"},
-        };
-
-        auto asyncResp = std::make_shared<AsyncResp>(res);
 
         /*constexpr const std::array<const char*, 4> inventoryForSystems = {
             "xyz.openbmc_project.Inventory.Item.Dimm",
