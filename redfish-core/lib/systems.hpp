@@ -2284,19 +2284,62 @@ class SystemResetActionInfo : public Node
         }
         const std::string& systemId = params[0];
 
-        res.jsonValue = {
-            {"@odata.type", "#ActionInfo.v1_1_2.ActionInfo"},
-            {"@odata.id", "/redfish/v1/Systems/" + systemId + "/ResetActionInfo"},
-            {"Name", "Reset Action Info"},
-            {"Id", "ResetActionInfo"},
-            {"Parameters",
-             {{{"Name", "ResetType"},
-               {"Required", true},
-               {"DataType", "String"},
-               {"AllowableValues",
-                {"On", "Off", "ForceOff", "ForceOn", "ForceRestart", "GracefulRestart",
-                 "GracefulShutdown", "PowerCycle", "Nmi"}}}}}};
-        res.end();
+				std::string systemId_path;
+				std::string delimiter = "_";
+				size_t pos;
+				int format_match = 1;
+
+				systemId_path.assign(params[0]);
+
+				/* set D-Bus object name according to format nf_blade_x */
+				/* change nf_blade_x to nf/bladex */
+        if((pos = systemId_path.find(delimiter)) != std::string::npos)
+					systemId_path.replace(pos, 1, "/");
+
+        if((pos = systemId_path.find(delimiter)) != std::string::npos)
+					systemId_path.erase(pos, 1);
+				else
+					format_match = 0;
+
+				/*check whether such system object is available on D-Bus*/
+        std::shared_ptr<AsyncResp> asyncResp = std::make_shared<AsyncResp>(res);
+				crow::connections::systemBus->async_method_call(
+						[asyncResp, systemId, format_match](const boost::system::error_code ec, 
+							  const std::variant<std::string>& property) {
+
+							if((!ec) && format_match) {
+								const std::string* value = 
+								    std::get_if<std::string>(&property);
+
+								std::string nf_attached, status;
+								nf_attached.assign(*value);
+							  size_t pos = nf_attached.find(".");
+								status.assign(nf_attached.substr(pos + 1, nf_attached.length()));
+
+								if(status == "true")
+								{
+								  asyncResp->res.jsonValue = {
+									  {"@odata.type", "#ActionInfo.v1_1_2.ActionInfo"},
+										{"@odata.id", "/redfish/v1/Systems/" + systemId + "/ResetActionInfo"},
+										{"Name", "Reset Action Info"},
+										{"Id", "ResetActionInfo"},
+										{"Parameters",
+											{{{"Name", "ResetType"},
+												 {"Required", true},
+												 {"DataType", "String"},
+												 {"AllowableValues",
+													 {"On", "Off", "ForceOff", "ForceOn", "ForceRestart", "GracefulRestart",
+														 "GracefulShutdown", "PowerCycle", "Nmi"}}}}}};
+								  return;
+								}
+							}
+							messages::internalError(asyncResp->res);
+							return;
+					  },
+						"xyz.openbmc_project.nf.power.manager",
+						"/xyz/openbmc_project/control/" + systemId_path,
+						"org.freedesktop.DBus.Properties", "Get",
+						"xyz.openbmc_project.NF.Blade.Power", "Attached");
     }
 };
 } // namespace redfish
