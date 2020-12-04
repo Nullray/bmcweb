@@ -1736,6 +1736,35 @@ inline void setWDTProperties(const std::shared_ptr<AsyncResp>& aResp,
     }
 }
 
+inline void bhNameMatch(std::string& systemId_path, int& match)
+{
+	std::string delimiter = "_";
+	size_t pos;
+	
+	match = 1;
+
+	/* set D-Bus object name according to format nf_blade_x */
+	/* change nf_blade_x to nf/bladex */
+  if((pos = systemId_path.find(delimiter)) != std::string::npos)
+			systemId_path.replace(pos, 1, "/");
+
+  if((pos = systemId_path.find(delimiter)) != std::string::npos)
+			systemId_path.erase(pos, 1);
+	else
+			match = 0;
+}
+
+inline void nfStatusParse(std::variant<std::string>& property, std::string status)
+{
+	const std::string* value = 
+		std::get_if<std::string>(&property);
+
+	std::string nf_attached;
+	nf_attached.assign(*value);
+	size_t pos = nf_attached.find(".");
+	status.assign(nf_attached.substr(pos + 1, nf_attached.length()));
+}
+
 /**
  * SystemsCollection derived class for delivering ComputerSystems Collection
  * Schema
@@ -2036,36 +2065,21 @@ class Systems : public Node
 
         const std::string& systemId = params[0];
 				std::string systemId_path;
-				std::string delimiter = "_";
-				size_t pos;
-				int format_match = 1;
-
-				systemId_path.assign(params[0]);
-
-				/* set D-Bus object name according to format nf_blade_x */
-				/* change nf_blade_x to nf/bladex */
-        if((pos = systemId_path.find(delimiter)) != std::string::npos)
-					systemId_path.replace(pos, 1, "/");
-
-        if((pos = systemId_path.find(delimiter)) != std::string::npos)
-					systemId_path.erase(pos, 1);
-				else
-					format_match = 0;
+				systemId_path.assign(systemId);
+				int match;
+				
+				bhNameMatch(systemId_path, match);
 
 				/*check whether such system object is available on D-Bus*/
         std::shared_ptr<AsyncResp> asyncResp = std::make_shared<AsyncResp>(res);
 				crow::connections::systemBus->async_method_call(
-						[asyncResp, systemId, format_match](const boost::system::error_code ec, 
+						[asyncResp, systemId, match](const boost::system::error_code ec, 
 							  const std::variant<std::string>& property) {
 
-							if((!ec) && format_match) {
-								const std::string* value = 
-								    std::get_if<std::string>(&property);
+							if((!ec) && match) {
+							  std::string status;
 
-								std::string nf_attached, status;
-								nf_attached.assign(*value);
-							  size_t pos = nf_attached.find(".");
-								status.assign(nf_attached.substr(pos + 1, nf_attached.length()));
+								nfStatusParse(property, status);
 
 								if(status == "true")
 								{
@@ -2283,38 +2297,22 @@ class SystemResetActionInfo : public Node
             return;
         }
         const std::string& systemId = params[0];
-
 				std::string systemId_path;
-				std::string delimiter = "_";
-				size_t pos;
-				int format_match = 1;
-
-				systemId_path.assign(params[0]);
-
-				/* set D-Bus object name according to format nf_blade_x */
-				/* change nf_blade_x to nf/bladex */
-        if((pos = systemId_path.find(delimiter)) != std::string::npos)
-					systemId_path.replace(pos, 1, "/");
-
-        if((pos = systemId_path.find(delimiter)) != std::string::npos)
-					systemId_path.erase(pos, 1);
-				else
-					format_match = 0;
+				systemId_path.assign(systemId);
+				int match;
+				
+				bhNameMatch(systemId_path, match);
 
 				/*check whether such system object is available on D-Bus*/
         std::shared_ptr<AsyncResp> asyncResp = std::make_shared<AsyncResp>(res);
 				crow::connections::systemBus->async_method_call(
-						[asyncResp, systemId, format_match](const boost::system::error_code ec, 
+						[asyncResp, systemId, match](const boost::system::error_code ec, 
 							  const std::variant<std::string>& property) {
 
-							if((!ec) && format_match) {
-								const std::string* value = 
-								    std::get_if<std::string>(&property);
+							if((!ec) && match) {
+							  std::string status;
 
-								std::string nf_attached, status;
-								nf_attached.assign(*value);
-							  size_t pos = nf_attached.find(".");
-								status.assign(nf_attached.substr(pos + 1, nf_attached.length()));
+								nfStatusParse(property, status);
 
 								if(status == "true")
 								{
