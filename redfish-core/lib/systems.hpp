@@ -1754,15 +1754,10 @@ inline void bhNameMatch(std::string& systemId_path, int& match)
 			match = 0;
 }
 
-inline void nfStatusParse(std::variant<std::string>& property, std::string& status)
+inline void nfStatusParse(std::string& property, std::string& status)
 {
-	const std::string* value = 
-		std::get_if<std::string>(&property);
-
-	std::string nf_attached;
-	nf_attached.assign(*value);
-	size_t pos = nf_attached.find(".");
-	status.assign(nf_attached.substr(pos + 1, nf_attached.length()));
+	size_t pos = property.find(".");
+	status.assign(property.substr(pos + 1, property.length()));
 }
 
 /**
@@ -1977,8 +1972,13 @@ class SystemActionsReset : public Node
 								
 								else 
 								{
-								    std::string status;
-									  nfStatusParse(property, status);
+								    std::string nf_attached, status;
+										const std::string* value = 
+										    std::get_if<std::string>(&property);
+												
+										nf_attached.assign(*value);
+									  nfStatusParse(nf_attached, status);
+
 									  if(status == "false")
 										{
 										    messages::internalError(asyncResp->res);
@@ -2093,9 +2093,12 @@ class Systems : public Node
 							  const std::variant<std::string>& property) {
 
 							if((!ec) && match) {
-							  std::string status;
-
-								nfStatusParse(property, status);
+								std::string nf_attached, status;
+								const std::string* value = 
+										std::get_if<std::string>(&property);
+												
+								nf_attached.assign(*value);
+								nfStatusParse(nf_attached, status);
 
 								if(status == "true")
 								{
@@ -2326,9 +2329,12 @@ class SystemResetActionInfo : public Node
 							  const std::variant<std::string>& property) {
 
 							if((!ec) && match) {
-							  std::string status;
-
-								nfStatusParse(property, status);
+								std::string nf_attached, status;
+								const std::string* value = 
+										std::get_if<std::string>(&property);
+												
+								nf_attached.assign(*value);
+								nfStatusParse(nf_attached, status);
 
 								if(status == "true")
 								{
