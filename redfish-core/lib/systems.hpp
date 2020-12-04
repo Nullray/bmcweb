@@ -1754,7 +1754,7 @@ inline void bhNameMatch(std::string& systemId_path, int& match)
 			match = 0;
 }
 
-inline void nfStatusParse(std::variant<std::string>& property, std::string status)
+inline void nfStatusParse(std::variant<std::string>& property, std::string& status)
 {
 	const std::string* value = 
 		std::get_if<std::string>(&property);
@@ -1865,22 +1865,6 @@ class SystemActionsReset : public Node
         }
         const std::string& systemId = params[0];
 
-		const std::string system_temp = "nf_blade_";
-
-		if (systemId.substr(0, system_temp.length()) != system_temp)
-		{
-            messages::internalError(res);
-            res.end();
-            return;
-		}
-
-		if (std::stoi(systemId.substr(system_temp.length())) >= MAX_NF_BLADE_NUM)
-		{
-            messages::internalError(res);
-            res.end();
-            return;
-		}
-
         auto asyncResp = std::make_shared<AsyncResp>(res);
 
         std::string resetType;
@@ -1894,12 +1878,12 @@ class SystemActionsReset : public Node
         bool hostCommand;
         if ((resetType == "On") || (resetType == "ForceOn"))
         {
-            command = "xyz.openbmc_project.Control.NF.Power.On";
+            command = "Power.On";
             hostCommand = false;
         }
         else if (resetType == "ForceOff" || resetType == "Off")
         {
-            command = "xyz.openbmc_project.Control.NF.Power.Off";
+            command = "Power.Off";
             hostCommand = false;
         }
         else if (resetType == "ForceRestart")
@@ -1974,12 +1958,40 @@ class SystemActionsReset : public Node
         }
         else
         {
-            crow::connections::systemBus->async_method_call(
-                [asyncResp, resetType](const boost::system::error_code ec) {
-                    if (ec)
+					  std::string systemId_path;
+					  systemId_path.assign(systemId);
+					  int match;
+
+					  bhNameMatch(systemId_path, match);
+				
+						crow::connections::systemBus->async_method_call(
+								[asyncResp, systemId_path, resetType, command, match](
+									const boost::system::error_code ec, 
+									const std::variant<std::string>& property) {
+
+								if (ec || (!match))
+								{
+								    messages::internalError(asyncResp->res);
+							      return;
+								}
+								
+								else 
+								{
+								    std::string status;
+									  nfStatusParse(property, status);
+									  if(status == "false")
+										{
+										    messages::internalError(asyncResp->res);
+							          return;
+								    }
+							  }
+								// send SET command to D-Bus
+                crow::connections::systemBus->async_method_call(
+										[asyncResp, resetType](const boost::system::error_code ec2) {
+                    if (ec2)
                     {
-                        BMCWEB_LOG_ERROR << "D-Bus responses error: " << ec;
-                        if (ec.value() == boost::asio::error::invalid_argument)
+                        BMCWEB_LOG_ERROR << "D-Bus responses error: " << ec2;
+                        if (ec2.value() == boost::asio::error::invalid_argument)
                         {
                             messages::actionParameterNotSupported(
                                 asyncResp->res, resetType, "Reset");
@@ -1992,12 +2004,16 @@ class SystemActionsReset : public Node
                     }
                     messages::success(asyncResp->res);
                 },
-                "xyz.openbmc_project.Control.NF.Power",
-                "/xyz/openbmc_project/control/nf/slot_" + 
-				  systemId.substr(system_temp.length()) + "_pwr",
+                "xyz.openbmc_project.nf.power.manager",
+                "/xyz/openbmc_project/control/" + systemId_path,
                 "org.freedesktop.DBus.Properties", "Set",
-                "xyz.openbmc_project.Control.NF.Power", "Asserted",
+                "xyz.openbmc_project.NF.Blade.Power", "Asserted",
                 std::variant<std::string>{command});
+					  },
+						"xyz.openbmc_project.nf.power.manager",
+						"/xyz/openbmc_project/control/" + systemId_path,
+						"org.freedesktop.DBus.Properties", "Get",
+						"xyz.openbmc_project.NF.Blade.Power", "Attached");
         }
     }
     /**
@@ -2070,7 +2086,7 @@ class Systems : public Node
 				
 				bhNameMatch(systemId_path, match);
 
-				/*check whether such system object is available on D-Bus*/
+				/*check whether such system object is available*/
         std::shared_ptr<AsyncResp> asyncResp = std::make_shared<AsyncResp>(res);
 				crow::connections::systemBus->async_method_call(
 						[asyncResp, systemId, match](const boost::system::error_code ec, 
