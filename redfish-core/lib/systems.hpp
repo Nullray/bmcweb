@@ -2089,8 +2089,9 @@ class Systems : public Node
 				/*check whether such system object is available*/
         std::shared_ptr<AsyncResp> asyncResp = std::make_shared<AsyncResp>(res);
 				crow::connections::systemBus->async_method_call(
-						[asyncResp, systemId, match](const boost::system::error_code ec, 
-							  const std::variant<std::string>& property) {
+						[asyncResp, systemId, systemId_path, match](
+							const boost::system::error_code ec, 
+							const std::variant<std::string>& property) {
 
 							if((!ec) && match) {
 								std::string nf_attached, status;
@@ -2123,7 +2124,28 @@ class Systems : public Node
 										{"Health", "OK"},
 										{"State", "Enabled"},
 									};
-								  return;
+									
+									// send GET command to check power state
+									crow::connections::systemBus->async_method_call(
+											[asyncResp](const boost::system::error_code ec2, 
+												const std::variant<std::string>& property2) {
+
+											if(ec2) return;
+
+											std::string nf_asserted, power;
+											const std::string* value2 = 
+											   std::get_if<std::string>(&property2);
+												
+											nf_asserted.assign(*value2);
+											nfStatusParse(nf_asserted, power);
+											
+											asyncResp->res.jsonValue["PowerState"] = power;
+                  },
+                  "xyz.openbmc_project.nf.power.manager",
+                  "/xyz/openbmc_project/control/" + systemId_path,
+                  "org.freedesktop.DBus.Properties", "Get",
+                  "xyz.openbmc_project.NF.Blade.Power", "Asserted");
+									return;
 								}
 							}
 							messages::internalError(asyncResp->res);
