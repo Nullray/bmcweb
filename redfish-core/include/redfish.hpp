@@ -192,6 +192,8 @@ class RedfishService
 
         nodes.emplace_back(std::make_unique<SensorCollection>(app));
         nodes.emplace_back(std::make_unique<Sensor>(app));
+        nodes.emplace_back(std::make_unique<SensorMonitor>(app));
+
 
         nodes.emplace_back(std::make_unique<TaskMonitor>(app));
         nodes.emplace_back(std::make_unique<TaskService>(app));
