@@ -3192,10 +3192,15 @@ class SensorMonitor : public Node
         BMCWEB_LOG_DEBUG << "Get all Sensor enter";
         const std::array<const char*, 1> interfaces = {
             "xyz.openbmc_project.Sensor.Value"};
+        std::string chassisId = "chassis";
+        std::shared_ptr<SensorsAsyncResp> asyncResp =
+            std::make_shared<SensorsAsyncResp>(res, chassisId,
+                                               std::vector<const char*>(),
+                                               sensors::node::sensors);
         // Get a list of all of the sensors that implement Sensor.Value
         // and get the path and service name associated with the sensor
         crow::connections::systemBus->async_method_call(
-            [asyncResp, sensorName](const boost::system::error_code ec,
+            [asyncResp](const boost::system::error_code ec,
                                     const GetSubTreeType& subtree) {
                 if (ec)
                 {
@@ -3215,7 +3220,8 @@ class SensorMonitor : public Node
                             std::string,
                             std::vector<std::pair<std::string,
                                                   std::vector<std::string>>>>&
-                            object) { sensorList->emplace(sensorPath); })
+                            object) { sensorList->emplace(object.first); })
+                            object) { sensorList->emplace(object.first); })
 
                     processSensorList(asyncResp, sensorList);
                 BMCWEB_LOG_DEBUG << "Get all Sensor exit";
