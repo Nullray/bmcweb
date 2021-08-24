@@ -520,10 +520,10 @@ void getChassis(const std::shared_ptr<SensorsAsyncResp>& sensorsAsyncResp,
                         sensorsAsyncResp->chassisSubNode ==
                                 sensors::node::thermal
                             ? "Temperatures"
-                            : sensorsAsyncResp->chassisSubNode ==
-                                      sensors::node::power
-                                  ? "Voltages"
-                                  : "Sensors");
+                        : sensorsAsyncResp->chassisSubNode ==
+                                sensors::node::power
+                            ? "Voltages"
+                            : "Sensors");
                     return;
                 }
                 const std::shared_ptr<boost::container::flat_set<std::string>>
@@ -3161,6 +3161,64 @@ class Sensor : public Node
                 sensorList->emplace(sensorPath);
                 processSensorList(asyncResp, sensorList);
                 BMCWEB_LOG_DEBUG << "respHandler1 exit";
+            },
+            "xyz.openbmc_project.ObjectMapper",
+            "/xyz/openbmc_project/object_mapper",
+            "xyz.openbmc_project.ObjectMapper", "GetSubTree",
+            "/xyz/openbmc_project/sensors", 2, interfaces);
+    }
+};
+
+class SensorMonitor : public Node
+{
+  public:
+    SensorMonitor(App& app) :
+        Node(app, "/redfish/v1/Chassis/chassis/sensorMonitor", std::string(),
+             std::string())
+    {
+        entityPrivileges = {
+            {boost::beast::http::verb::get, {{"Login"}}},
+            {boost::beast::http::verb::head, {{"Login"}}},
+            {boost::beast::http::verb::patch, {{"ConfigureManager"}}},
+            {boost::beast::http::verb::put, {{"ConfigureManager"}}},
+            {boost::beast::http::verb::delete_, {{"ConfigureManager"}}},
+            {boost::beast::http::verb::post, {{"ConfigureManager"}}}};
+    }
+
+  private:
+    void doGet(crow::Response& res, const crow::Request&,
+               const std::vector<std::string>&) override
+    {
+        BMCWEB_LOG_DEBUG << "Get all Sensor enter";
+        const std::array<const char*, 1> interfaces = {
+            "xyz.openbmc_project.Sensor.Value"};
+        // Get a list of all of the sensors that implement Sensor.Value
+        // and get the path and service name associated with the sensor
+        crow::connections::systemBus->async_method_call(
+            [asyncResp, sensorName](const boost::system::error_code ec,
+                                    const GetSubTreeType& subtree) {
+                if (ec)
+                {
+                    messages::internalError(asyncResp->res);
+                    BMCWEB_LOG_ERROR << "Sensor getSensorPaths resp_handler: "
+                                     << "Dbus error " << ec;
+                    return;
+                }
+                const std::shared_ptr<boost::container::flat_set<std::string>>
+                    sensorList = std::make_shared<
+                        boost::container::flat_set<std::string>>();
+
+                std::for_each(
+                    subtree.begin(), subtree.end(),
+                    [sensorList](
+                        const std::pair<
+                            std::string,
+                            std::vector<std::pair<std::string,
+                                                  std::vector<std::string>>>>&
+                            object) { sensorList->emplace(sensorPath); })
+
+                    processSensorList(asyncResp, sensorList);
+                BMCWEB_LOG_DEBUG << "Get all Sensor exit";
             },
             "xyz.openbmc_project.ObjectMapper",
             "/xyz/openbmc_project/object_mapper",
