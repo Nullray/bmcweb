@@ -3220,7 +3220,7 @@ class SensorMonitor : public Node
                             std::string,
                             std::vector<std::pair<std::string,
                                                   std::vector<std::string>>>>&
-                            object) { sensorList->emplace(object.first); })
+                            object) { sensorList->emplace(object.first); });
 
                     processSensorList(asyncResp, sensorList);
                 BMCWEB_LOG_DEBUG << "Get all Sensor exit";
