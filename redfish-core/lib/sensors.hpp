@@ -3173,8 +3173,7 @@ class SensorMonitor : public Node
 {
   public:
     SensorMonitor(App& app) :
-        Node(app, "/redfish/v1/Chassis/chassis/sensorMonitor", std::string(),
-             std::string())
+        Node(app, "/redfish/v1/Chassis/chassis/sensorMonitor")
     {
         entityPrivileges = {
             {boost::beast::http::verb::get, {{"Login"}}},
