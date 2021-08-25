@@ -27,6 +27,8 @@
 
 #include <variant>
 
+#define MAX_NF_BLADE_NUM  16
+
 namespace redfish
 {
 
@@ -1734,6 +1736,24 @@ inline void setWDTProperties(const std::shared_ptr<AsyncResp>& aResp,
     }
 }
 
+inline void bhNameMatch(std::string& systemId_path, int& match)
+{
+    std::string delimiter = "_";
+    size_t pos;
+  
+    match = 1;
+  
+    /* set D-Bus object name according to format nf_blade_x */
+    /* change nf_blade_x to nf/bladex */
+    if((pos = systemId_path.find(delimiter)) != std::string::npos)
+        systemId_path.replace(pos, 1, "/");
+  
+    if((pos = systemId_path.find(delimiter)) != std::string::npos)
+        systemId_path.erase(pos, 1);
+    else
+        match = 0;
+}
+
 /**
  * SystemsCollection derived class for delivering ComputerSystems Collection
  * Schema
@@ -1761,30 +1781,44 @@ class SystemsCollection : public Node
             "#ComputerSystemCollection.ComputerSystemCollection";
         res.jsonValue["@odata.id"] = "/redfish/v1/Systems";
         res.jsonValue["Name"] = "Computer System Collection";
-
-        crow::connections::systemBus->async_method_call(
-            [asyncResp](const boost::system::error_code ec,
-                        const std::variant<std::string>& /*hostName*/) {
-                nlohmann::json& ifaceArray =
-                    asyncResp->res.jsonValue["Members"];
-                ifaceArray = nlohmann::json::array();
-                auto& count = asyncResp->res.jsonValue["Members@odata.count"];
-                count = 0;
-                ifaceArray.push_back(
-                    {{"@odata.id", "/redfish/v1/Systems/system"}});
+        
+        nlohmann::json& ifaceArray = res.jsonValue["Members"];
+        ifaceArray = nlohmann::json::array();
+        
+        auto& count = res.jsonValue["Members@odata.count"];
+        count = 0;
+        
+        for(int i = 0; i < MAX_NF_BLADE_NUM; i++)
+        {
+          crow::connections::systemBus->async_method_call(
+              [asyncResp, &ifaceArray, &count, i](
+                const boost::system::error_code ec,
+                const std::variant<std::string>& property)
+              {
                 if (!ec)
                 {
-                    BMCWEB_LOG_DEBUG << "Hypervisor is available";
-                    ifaceArray.push_back(
-                        {{"@odata.id", "/redfish/v1/Systems/hypervisor"}});
+                  const std::string* value = 
+                      std::get_if<std::string>(&property);
+                      
+                  std::string status;
+                  status.assign(*value);
+                  
+                  if (status == "true")
+                  {
+                    std::string node = "redfish/v1/Systems/nf_blade_" 
+                        + std::to_string(i);
+                    ifaceArray.push_back({{"@odata.id", node.c_str()}});
                     count = ifaceArray.size();
-                    return;
+                  }
                 }
-            },
-            "xyz.openbmc_project.Settings",
-            "/xyz/openbmc_project/network/hypervisor",
-            "org.freedesktop.DBus.Properties", "Get",
-            "xyz.openbmc_project.Network.SystemConfiguration", "HostName");
+                return;
+              },
+              "xyz.openbmc_project.nf.power.manager",
+              "/xyz/openbmc_project/control/nf/blade" 
+                  + std::to_string(i),
+              "org.freedesktop.DBus.Properties", "Get",
+              "xyz.openbmc_project.NF.Blade.Power", "Attached");
+        }
     }
 };
 
@@ -1796,7 +1830,7 @@ class SystemActionsReset : public Node
 {
   public:
     SystemActionsReset(App& app) :
-        Node(app, "/redfish/v1/Systems/system/Actions/ComputerSystem.Reset/")
+        Node(app, "/redfish/v1/Systems/<str>/Actions/ComputerSystem.Reset/", std::string())
     {
         entityPrivileges = {
             {boost::beast::http::verb::post, {{"ConfigureComponents"}}}};
@@ -1808,8 +1842,18 @@ class SystemActionsReset : public Node
      * Analyzes POST body message before sends Reset request data to D-Bus.
      */
     void doPost(crow::Response& res, const crow::Request& req,
-                const std::vector<std::string>&) override
+                const std::vector<std::string>& params) override
     {
+        // Check if there is required param, truly entering this shall be
+        // impossible.
+        if (params.size() != 1)
+        {
+            messages::internalError(res);
+            res.end();
+            return;
+        }
+        const std::string& systemId = params[0];
+
         auto asyncResp = std::make_shared<AsyncResp>(res);
 
         std::string resetType;
@@ -1821,42 +1865,20 @@ class SystemActionsReset : public Node
         // Get the command and host vs. chassis
         std::string command;
         bool hostCommand;
-        if ((resetType == "On") || (resetType == "ForceOn"))
+        if (resetType == "On")
         {
-            command = "xyz.openbmc_project.State.Host.Transition.On";
-            hostCommand = true;
+            command = "Power.On";
+            hostCommand = false;
         }
         else if (resetType == "ForceOff")
         {
-            command = "xyz.openbmc_project.State.Chassis.Transition.Off";
+            command = "Power.Off";
             hostCommand = false;
         }
         else if (resetType == "ForceRestart")
         {
-            command =
-                "xyz.openbmc_project.State.Host.Transition.ForceWarmReboot";
-            hostCommand = true;
-        }
-        else if (resetType == "GracefulShutdown")
-        {
-            command = "xyz.openbmc_project.State.Host.Transition.Off";
-            hostCommand = true;
-        }
-        else if (resetType == "GracefulRestart")
-        {
-            command =
-                "xyz.openbmc_project.State.Host.Transition.GracefulWarmReboot";
-            hostCommand = true;
-        }
-        else if (resetType == "PowerCycle")
-        {
-            command = "xyz.openbmc_project.State.Host.Transition.Reboot";
-            hostCommand = true;
-        }
-        else if (resetType == "Nmi")
-        {
-            doNMI(asyncResp);
-            return;
+            command = "Force";
+            hostCommand = false;
         }
         else
         {
@@ -1866,6 +1888,17 @@ class SystemActionsReset : public Node
 
         if (hostCommand)
         {
+            /**
+             *  Need to figure out the params in this function.
+             *  Or it will be confused to add our own configurations. 
+             *  @params: 
+             *      handler: 
+             *      service:
+             *      objpath:
+             *      interf:
+             *      method:
+             *      a(InputArgs& ...):
+             */
             crow::connections::systemBus->async_method_call(
                 [asyncResp, resetType](const boost::system::error_code ec) {
                     if (ec)
@@ -1887,34 +1920,71 @@ class SystemActionsReset : public Node
                 "xyz.openbmc_project.State.Host",
                 "/xyz/openbmc_project/state/host0",
                 "org.freedesktop.DBus.Properties", "Set",
-                "xyz.openbmc_project.State.Host", "RequestedHostTransition",
+                "xyz.openbmc_project.State.Host", "RequestHostTransition",
                 std::variant<std::string>{command});
         }
         else
         {
-            crow::connections::systemBus->async_method_call(
-                [asyncResp, resetType](const boost::system::error_code ec) {
-                    if (ec)
+          std::string systemId_path;
+          systemId_path.assign(systemId);
+          int match;
+          
+          bhNameMatch(systemId_path, match);
+          
+          crow::connections::systemBus->async_method_call(
+              [asyncResp, systemId_path, resetType, command, match](
+                const boost::system::error_code ec, 
+                const std::variant<std::string>& property)
+              {
+                if (ec || (!match))
+                {
+                  messages::internalError(asyncResp->res);
+                  return;
+                }
+                
+                else
+                {
+                  std::string status;
+                  const std::string* value = 
+                    std::get_if<std::string>(&property);
+                    
+                  status.assign(*value);
+                  
+                  if(status == "false")
+                  {
+                    messages::internalError(asyncResp->res);
+                    return;
+                  }
+                }
+                
+                // send SET command to D-Bus
+                crow::connections::systemBus->async_method_call(
+                    [asyncResp, resetType](const boost::system::error_code ec2)
                     {
-                        BMCWEB_LOG_ERROR << "D-Bus responses error: " << ec;
-                        if (ec.value() == boost::asio::error::invalid_argument)
-                        {
-                            messages::actionParameterNotSupported(
-                                asyncResp->res, resetType, "Reset");
-                        }
+                      if (ec2)
+                      {
+                        BMCWEB_LOG_ERROR << "D-Bus responses error: " << ec2;
+                        if (ec2.value() == boost::asio::error::invalid_argument)
+                          messages::actionParameterNotSupported(
+                              asyncResp->res, resetType, "Reset");
                         else
-                        {
-                            messages::internalError(asyncResp->res);
-                        }
+                          messages::internalError(asyncResp->res);
+
                         return;
-                    }
-                    messages::success(asyncResp->res);
-                },
-                "xyz.openbmc_project.State.Chassis",
-                "/xyz/openbmc_project/state/chassis0",
-                "org.freedesktop.DBus.Properties", "Set",
-                "xyz.openbmc_project.State.Chassis", "RequestedPowerTransition",
-                std::variant<std::string>{command});
+                      }
+                      messages::success(asyncResp->res);
+                    },
+                    "xyz.openbmc_project.nf.power.manager",
+                    "/xyz/openbmc_project/control/" + systemId_path,
+                    "org.freedesktop.DBus.Properties", "Set",
+                    "xyz.openbmc_project.NF.Blade.Power", 
+                    ((resetType == "ForceRestart") ? "WarmReset" : "Asserted"),
+                    std::variant<std::string>{command});
+              },
+              "xyz.openbmc_project.nf.power.manager",
+              "/xyz/openbmc_project/control/" + systemId_path,
+              "org.freedesktop.DBus.Properties", "Get",
+              "xyz.openbmc_project.NF.Blade.Power", "Attached");
         }
     }
     /**
@@ -1953,7 +2023,7 @@ class Systems : public Node
     /*
      * Default Constructor
      */
-    Systems(App& app) : Node(app, "/redfish/v1/Systems/system/")
+    Systems(App& app) : Node(app, "/redfish/v1/Systems/<str>/", std::string())
     {
         entityPrivileges = {
             {boost::beast::http::verb::get, {{"Login"}}},
@@ -1969,48 +2039,114 @@ class Systems : public Node
      * Functions triggers appropriate requests on DBus
      */
     void doGet(crow::Response& res, const crow::Request&,
-               const std::vector<std::string>&) override
+               const std::vector<std::string>& params) override
     {
-        res.jsonValue["@odata.type"] = "#ComputerSystem.v1_13_0.ComputerSystem";
-        res.jsonValue["Name"] = "system";
-        res.jsonValue["Id"] = "system";
-        res.jsonValue["SystemType"] = "Physical";
-        res.jsonValue["Description"] = "Computer System";
-        res.jsonValue["ProcessorSummary"]["Count"] = 0;
-        res.jsonValue["ProcessorSummary"]["Status"]["State"] = "Disabled";
-        res.jsonValue["MemorySummary"]["TotalSystemMemoryGiB"] = uint64_t(0);
-        res.jsonValue["MemorySummary"]["Status"]["State"] = "Disabled";
-        res.jsonValue["@odata.id"] = "/redfish/v1/Systems/system";
+        // Check if there is required param, truly entering this shall be
+        // impossible.
+        if (params.size() != 1)
+        {
+          messages::internalError(res);
+          res.end();
+          return;
+        }
+        
+        const std::string& systemId = params[0];
+        std::string systemId_path;
+        systemId_path.assign(systemId);
+        int match;
+        
+        bhNameMatch(systemId_path, match);
+        
+        /*check whether such system object is available*/
+        std::shared_ptr<AsyncResp> asyncResp = std::make_shared<AsyncResp>(res);
+        crow::connections::systemBus->async_method_call(
+            [asyncResp, systemId, systemId_path, match](
+              const boost::system::error_code ec, 
+              const std::variant<std::string>& property) 
+            {
+              if((!ec) && match)
+              {
+                std::string status;
+                const std::string* value = 
+                  std::get_if<std::string>(&property);
+                  
+                status.assign(*value);
+                
+                if(status == "true")
+                {
+                  asyncResp->res.jsonValue["@odata.type"] = "#ComputerSystem.v1_13_0.ComputerSystem";
+                  asyncResp->res.jsonValue["Name"] = systemId;
+                  asyncResp->res.jsonValue["Id"] = systemId;
+                  asyncResp->res.jsonValue["@odata.id"] = "/redfish/v1/Systems/" + systemId;
+                  asyncResp->res.jsonValue["SystemType"] = "Physical";
+                  asyncResp->res.jsonValue["Description"] = "NF blade card";
+                  asyncResp->res.jsonValue["ProcessorSummary"]["Count"] = 4;
+                  asyncResp->res.jsonValue["ProcessorSummary"]["Status"]["State"] = "Enabled";
+                  asyncResp->res.jsonValue["MemorySummary"]["TotalSystemMemoryGiB"] = uint64_t(16);
+                  asyncResp->res.jsonValue["MemorySummary"]["Status"]["State"] = "Enabled";
+                  
+                  asyncResp->res.jsonValue["Actions"]["#ComputerSystem.Reset"] = {
+                    {"target", 
+                      "/redfish/v1/Systems/" + systemId + "/Actions/ComputerSystem.Reset"},
+                    {"@Redfish.ActionInfo",
+                      "/redfish/v1/Systems/" + systemId + "/ResetActionInfo"}};
+                  
+                  asyncResp->res.jsonValue["Status"] = {
+                    {"Health", "OK"},
+                    {"State", "Enabled"},
+                  };
+                  
+                  // send GET command to check power state
+                  crow::connections::systemBus->async_method_call(
+                      [asyncResp](const boost::system::error_code ec2, 
+                        const std::variant<std::string>& property2) 
+                      {
+                        if(ec2) return;
+                      
+                        std::string status2, power;
+                        size_t pos;
+                        const std::string* value2 = 
+                          std::get_if<std::string>(&property2);
+                        
+                        status2.assign(*value2);
 
-        res.jsonValue["Processors"] = {
+                        pos = status2.find(".");
+                        power.assign(status2.substr(pos + 1, status2.length()));
+
+                        asyncResp->res.jsonValue["PowerState"] = power;
+                      },
+                      "xyz.openbmc_project.nf.power.manager",
+                      "/xyz/openbmc_project/control/" + systemId_path,
+                      "org.freedesktop.DBus.Properties", "Get",
+                      "xyz.openbmc_project.NF.Blade.Power", "Asserted");
+                  return;
+                }
+              }
+              messages::internalError(asyncResp->res);
+              return;
+            },
+            "xyz.openbmc_project.nf.power.manager",
+            "/xyz/openbmc_project/control/" + systemId_path,
+            "org.freedesktop.DBus.Properties", "Get",
+            "xyz.openbmc_project.NF.Blade.Power", "Attached");
+
+        /*res.jsonValue["Processors"] = {
             {"@odata.id", "/redfish/v1/Systems/system/Processors"}};
         res.jsonValue["Memory"] = {
             {"@odata.id", "/redfish/v1/Systems/system/Memory"}};
         res.jsonValue["Storage"] = {
-            {"@odata.id", "/redfish/v1/Systems/system/Storage"}};
+            {"@odata.id", "/redfish/v1/Systems/system/Storage"}};*/
 
-        res.jsonValue["Actions"]["#ComputerSystem.Reset"] = {
-            {"target",
-             "/redfish/v1/Systems/system/Actions/ComputerSystem.Reset"},
-            {"@Redfish.ActionInfo",
-             "/redfish/v1/Systems/system/ResetActionInfo"}};
-
-        res.jsonValue["LogServices"] = {
+        /*res.jsonValue["LogServices"] = {
             {"@odata.id", "/redfish/v1/Systems/system/LogServices"}};
 
         res.jsonValue["Bios"] = {
             {"@odata.id", "/redfish/v1/Systems/system/Bios"}};
 
         res.jsonValue["Links"]["ManagedBy"] = {
-            {{"@odata.id", "/redfish/v1/Managers/bmc"}}};
+            {{"@odata.id", "/redfish/v1/Managers/bmc"}}};*/
 
-        res.jsonValue["Status"] = {
-            {"Health", "OK"},
-            {"State", "Enabled"},
-        };
-        auto asyncResp = std::make_shared<AsyncResp>(res);
-
-        constexpr const std::array<const char*, 4> inventoryForSystems = {
+        /*constexpr const std::array<const char*, 4> inventoryForSystems = {
             "xyz.openbmc_project.Inventory.Item.Dimm",
             "xyz.openbmc_project.Inventory.Item.Cpu",
             "xyz.openbmc_project.Inventory.Item.Drive",
@@ -2033,15 +2169,15 @@ class Systems : public Node
             "xyz.openbmc_project.ObjectMapper", "GetSubTreePaths", "/",
             int32_t(0), inventoryForSystems);
 
-        health->populate();
+        health->populate();*/
 
-        getMainChassisId(asyncResp, [](const std::string& chassisId,
+        /*getMainChassisId(asyncResp, [](const std::string& chassisId,
                                        const std::shared_ptr<AsyncResp>& aRsp) {
             aRsp->res.jsonValue["Links"]["Chassis"] = {
                 {{"@odata.id", "/redfish/v1/Chassis/" + chassisId}}};
-        });
+        });*/
 
-        getLocationIndicatorActive(asyncResp);
+        /*getLocationIndicatorActive(asyncResp);
         // TODO (Gunnar): Remove IndicatorLED after enough time has passed
         getIndicatorLedState(asyncResp);
         getComputerSystem(asyncResp, health);
@@ -2051,9 +2187,9 @@ class Systems : public Node
         getHostWatchdogTimer(asyncResp);
         getPowerRestorePolicy(asyncResp);
         getAutomaticRetry(asyncResp);
-        getLastResetTime(asyncResp);
+        getLastResetTime(asyncResp);*/
 #ifdef BMCWEB_ENABLE_REDFISH_PROVISIONING_FEATURE
-        getProvisioningStatus(asyncResp);
+        //getProvisioningStatus(asyncResp);
 #endif
     }
 
@@ -2151,7 +2287,7 @@ class SystemResetActionInfo : public Node
      * Default Constructor
      */
     SystemResetActionInfo(App& app) :
-        Node(app, "/redfish/v1/Systems/system/ResetActionInfo/")
+        Node(app, "/redfish/v1/Systems/<str>/ResetActionInfo/", std::string())
     {
         entityPrivileges = {
             {boost::beast::http::verb::get, {{"Login"}}},
@@ -2167,21 +2303,57 @@ class SystemResetActionInfo : public Node
      * Functions triggers appropriate requests on DBus
      */
     void doGet(crow::Response& res, const crow::Request&,
-               const std::vector<std::string>&) override
+               const std::vector<std::string>& params) override
     {
-        res.jsonValue = {
-            {"@odata.type", "#ActionInfo.v1_1_2.ActionInfo"},
-            {"@odata.id", "/redfish/v1/Systems/system/ResetActionInfo"},
-            {"Name", "Reset Action Info"},
-            {"Id", "ResetActionInfo"},
-            {"Parameters",
-             {{{"Name", "ResetType"},
-               {"Required", true},
-               {"DataType", "String"},
-               {"AllowableValues",
-                {"On", "ForceOff", "ForceOn", "ForceRestart", "GracefulRestart",
-                 "GracefulShutdown", "PowerCycle", "Nmi"}}}}}};
-        res.end();
+        if (params.size() != 1)
+        {
+            messages::internalError(res);
+            res.end();
+            return;
+        }
+        const std::string& systemId = params[0];
+				std::string systemId_path;
+				systemId_path.assign(systemId);
+				int match;
+				
+				bhNameMatch(systemId_path, match);
+        
+        /*check whether such system object is available on D-Bus*/
+        std::shared_ptr<AsyncResp> asyncResp = std::make_shared<AsyncResp>(res);
+        crow::connections::systemBus->async_method_call(
+            [asyncResp, systemId, match](const boost::system::error_code ec, 
+              const std::variant<std::string>& property) 
+            {
+              if((!ec) && match)
+              {
+                std::string status;
+                const std::string* value = 
+                    std::get_if<std::string>(&property);
+                    
+                status.assign(*value);
+                if(status == "true")
+                {
+                  asyncResp->res.jsonValue = {
+                    {"@odata.type", "#ActionInfo.v1_1_2.ActionInfo"},
+                    {"@odata.id", "/redfish/v1/Systems/" + systemId + "/ResetActionInfo"},
+                    {"Name", "Reset Action Info"},
+                    {"Id", "ResetActionInfo"},
+                    {"Parameters",
+                      {{{"Name", "ResetType"},
+                        {"Required", true},
+                        {"DataType", "String"},
+                        {"AllowableValues",
+                          {"On", "ForceOff", "ForceRestart"}}}}}};
+                  return;
+                }
+              }
+              messages::internalError(asyncResp->res);
+              return;
+            },
+            "xyz.openbmc_project.nf.power.manager",
+            "/xyz/openbmc_project/control/" + systemId_path,
+            "org.freedesktop.DBus.Properties", "Get",
+            "xyz.openbmc_project.NF.Blade.Power", "Attached");
     }
 };
 } // namespace redfish
