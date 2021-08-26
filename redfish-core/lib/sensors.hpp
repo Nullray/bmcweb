@@ -3196,6 +3196,7 @@ class SensorMonitor : public Node
             std::make_shared<SensorsAsyncResp>(res, chassisId,
                                                std::vector<const char*>(),
                                                sensors::node::sensors);
+        asyncResp->res.jsonValue["default"] = nlohmann::json::array();
         // Get a list of all of the sensors that implement Sensor.Value
         // and get the path and service name associated with the sensor
         crow::connections::systemBus->async_method_call(
@@ -3214,20 +3215,46 @@ class SensorMonitor : public Node
 
                 std::for_each(
                     subtree.begin(), subtree.end(),
-                    [sensorList](
+                    [sensorList, asyncResp](
                         const std::pair<
                             std::string,
                             std::vector<std::pair<std::string,
                                                   std::vector<std::string>>>>&
-                            object) { 
-                            std::cerr << "[BMCWEB_log]add sensorname = "
-                                  << object.first<<std::endl;
-                            sensorList->emplace(object.first); 
+                            object) {
+                        std::string path = object.first;
+                        std::vector<
+                            std::pair<std::string, std::vector<std::string>>>
+                            names = object.second;
+                        std::string name = names[0].first;
+                        std::cerr << "reading sensor: path = " << path
+                                  << "name = " << name << std::endl;
 
+                        // get and set value here
+                        crow::connections::systemBus->async_method_call(
+                            [path,
+                             asyncResp](const boost::system::error_code ec,
+                                        const std::variant<std::string, double>&
+                                            propty) {
+                                if (ec)
+                                {
+                                    std::cerr << "get sensor value error"
+                                              << std::endl;
+                                    return;
+                                }
+                                auto value = std::get_if<double>(&propty);
+                                if (value != nullptr)
+                                    asyncResp->res.jsonValue["default"]
+                                        .push_back(
+                                            {{"name", "" + path},
+                                             {"value",
+                                              "" + std::to_string(*value)}});
+                            },
+                            name, path, "org.freedesktop.DBus.Properties",
+                            "Get", "xyz.openbmc_project.Sensor.Value", "Value");
+                       
                     });
-                std::cerr << "[BMCWEB_log]sensorlist = " << sensorList
-                          << std::endl;
-                processSensorList(asyncResp, sensorList);
+                // processSensorList(asyncResp, sensorList);
+                
                 BMCWEB_LOG_DEBUG << "Get all Sensor exit";
             },
             "xyz.openbmc_project.ObjectMapper",
