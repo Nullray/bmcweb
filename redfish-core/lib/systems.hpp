@@ -2273,17 +2273,12 @@ class Systems : public Node
             {
                         // send SET command to D-Bus
                     crow::connections::systemBus->async_method_call(
-                        [asyncResp, resetType](const boost::system::error_code ec2)
+                        [asyncResp](const boost::system::error_code ec2)
                         {
                         if (ec2)
                         {
                             BMCWEB_LOG_ERROR << "D-Bus responses error: " << ec2;
-                            if (ec2.value() == boost::asio::error::invalid_argument)
-                            messages::actionParameterNotSupported(
-                                asyncResp->res, resetType, "Reset");
-                            else
                             messages::internalError(asyncResp->res);
-
                             return;
                         }
                         messages::success(asyncResp->res);
