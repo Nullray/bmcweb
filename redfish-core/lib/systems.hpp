@@ -2272,7 +2272,7 @@ class Systems : public Node
 
         if (bootProps)
         {
-            std::optional<std::string> bootSource;
+            std::string bootSource;
             std::optional<std::string> bootEnable;
             std::optional<std::string> automaticRetryConfig;
 
@@ -2285,6 +2285,7 @@ class Systems : public Node
             }
             if (bootSource || bootEnable)
             {
+
                         // send SET command to D-Bus
                     crow::connections::systemBus->async_method_call(
                         [asyncResp](const boost::system::error_code ec2)
