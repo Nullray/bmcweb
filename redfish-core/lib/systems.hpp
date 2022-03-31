@@ -2216,8 +2216,22 @@ class Systems : public Node
     }
 
     void doPatch(crow::Response& res, const crow::Request& req,
-                 const std::vector<std::string>&) override
+                 const std::vector<std::string>& params) override
     {
+        if (params.size() != 1)
+        {
+          messages::internalError(res);
+          res.end();
+          return;
+        }
+        
+        const std::string& systemId = params[0];
+        std::string systemId_path;
+        systemId_path.assign(systemId);
+        int match;
+
+        bhNameMatch(systemId_path, match);
+
         std::optional<bool> locationIndicatorActive;
         std::optional<std::string> indicatorLed;
         std::optional<nlohmann::json> bootProps;
