@@ -2121,9 +2121,9 @@ class Systems : public Node
                       "xyz.openbmc_project.NF.Blade.Power", "Asserted");
 
                       // send GET command to check bootmode
-                  aResp->res.jsonValue["Boot"]["BootSourceOverrideEnabled"] ="Continuous";
-                  aResp->res.jsonValue["Boot"]["BootSourceOverrideMode"] = "Legacy";
-                  aResp->res.jsonValue["Boot"]["BootSourceOverrideTarget@Redfish."
+                  asyncResp->res.jsonValue["Boot"]["BootSourceOverrideEnabled"] ="Continuous";
+                  asyncResp->res.jsonValue["Boot"]["BootSourceOverrideMode"] = "Legacy";
+                  asyncResp->res.jsonValue["Boot"]["BootSourceOverrideTarget@Redfish."
                                             "AllowableValues"] = {"None", "Pxe", "Hdd", "Cd", "Diags", "BiosSetup", "Usb"};
                   crow::connections::systemBus->async_method_call(
                      [asyncResp](const boost::system::error_code ec3, 
@@ -2134,7 +2134,7 @@ class Systems : public Node
                        const std::string* value3 = 
                           std::get_if<std::string>(&property3);
                           status3.assign(*value3);
-                          aResp->res.jsonValue["Boot"]["BootSourceOverrideTarget"] = status3;
+                          asyncResp->res.jsonValue["Boot"]["BootSourceOverrideTarget"] = status3;
                      },
                       "xyz.openbmc_project.nf.boot.manager",
                       "/xyz/openbmc_project/control/" + systemId_path,
