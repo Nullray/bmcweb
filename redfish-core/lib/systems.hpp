@@ -2283,7 +2283,7 @@ class Systems : public Node
             {
                 return;
             }
-            if (bootSource || bootEnable)
+            if (!bootSource.empty())
             {
 
                         // send SET command to D-Bus
