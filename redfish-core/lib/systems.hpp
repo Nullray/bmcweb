@@ -2301,7 +2301,7 @@ class Systems : public Node
                         "/xyz/openbmc_project/control/" + systemId_path,
                         "org.freedesktop.DBus.Properties", "Set",
                         "xyz.openbmc_project.NF.Blade.Boot", "BootMode",
-                        std::variant<std::string>{bootSource});
+                        std::variant<std::string>(bootSource));
             }
             if (automaticRetryConfig)
             {
