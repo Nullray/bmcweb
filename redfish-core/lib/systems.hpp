@@ -2300,7 +2300,7 @@ class Systems : public Node
                         "xyz.openbmc_project.nf.boot.manager",
                         "/xyz/openbmc_project/control/" + systemId_path,
                         "org.freedesktop.DBus.Properties", "Set",
-                        "xyz.openbmc_project.NF.Blade.Boot", "BootMode"
+                        "xyz.openbmc_project.NF.Blade.Boot", "BootMode",
                         std::variant<std::string>{bootSource});
             }
             if (automaticRetryConfig)
