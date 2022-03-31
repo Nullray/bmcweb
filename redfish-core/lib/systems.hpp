@@ -2271,8 +2271,28 @@ class Systems : public Node
             }
             if (bootSource || bootEnable)
             {
-                setBootSourceProperties(asyncResp, std::move(bootSource),
-                                        std::move(bootEnable));
+                        // send SET command to D-Bus
+                    crow::connections::systemBus->async_method_call(
+                        [asyncResp, resetType](const boost::system::error_code ec2)
+                        {
+                        if (ec2)
+                        {
+                            BMCWEB_LOG_ERROR << "D-Bus responses error: " << ec2;
+                            if (ec2.value() == boost::asio::error::invalid_argument)
+                            messages::actionParameterNotSupported(
+                                asyncResp->res, resetType, "Reset");
+                            else
+                            messages::internalError(asyncResp->res);
+
+                            return;
+                        }
+                        messages::success(asyncResp->res);
+                        },
+                        "xyz.openbmc_project.nf.boot.manager",
+                        "/xyz/openbmc_project/control/" + systemId_path,
+                        "org.freedesktop.DBus.Properties", "Set",
+                        "xyz.openbmc_project.NF.Blade.Boot", "BootMode"
+                        std::variant<std::string>{bootSource});
             }
             if (automaticRetryConfig)
             {
