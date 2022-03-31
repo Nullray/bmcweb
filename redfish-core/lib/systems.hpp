@@ -2095,8 +2095,8 @@ class Systems : public Node
                     {"Health", "OK"},
                     {"State", "Enabled"},
                   };
-                  
-                  // send GET command to check power state
+
+                      // send GET command to check power state
                   crow::connections::systemBus->async_method_call(
                       [asyncResp](const boost::system::error_code ec2, 
                         const std::variant<std::string>& property2) 
@@ -2119,6 +2119,28 @@ class Systems : public Node
                       "/xyz/openbmc_project/control/" + systemId_path,
                       "org.freedesktop.DBus.Properties", "Get",
                       "xyz.openbmc_project.NF.Blade.Power", "Asserted");
+
+                      // send GET command to check bootmode
+                  aResp->res.jsonValue["Boot"]["BootSourceOverrideEnabled"] ="Continuous";
+                  aResp->res.jsonValue["Boot"]["BootSourceOverrideMode"] = "Legacy";
+                  aResp->res.jsonValue["Boot"]["BootSourceOverrideTarget@Redfish."
+                                            "AllowableValues"] = {"None", "Pxe", "Hdd", "Cd", "Diags", "BiosSetup", "Usb"};
+                  crow::connections::systemBus->async_method_call(
+                     [asyncResp](const boost::system::error_code ec3, 
+                       const std::variant<std::string>& property3) 
+                     {
+                       if(ec3) return;
+                       std::string status3;
+                       const std::string* value3 = 
+                          std::get_if<std::string>(&property3);
+                          status3.assign(*value3);
+                          aResp->res.jsonValue["Boot"]["BootSourceOverrideTarget"] = status3;
+                     },
+                      "xyz.openbmc_project.nf.boot.manager",
+                      "/xyz/openbmc_project/control/" + systemId_path,
+                      "org.freedesktop.DBus.Properties", "Get",
+                      "xyz.openbmc_project.NF.Blade.Boot", "BootMode");
+
                   return;
                 }
               }
