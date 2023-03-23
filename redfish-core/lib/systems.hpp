@@ -683,7 +683,7 @@ inline std::string dbusToRfBootSource(const std::string& dbusSource)
     if (dbusSource ==
         "xyz.openbmc_project.Control.Boot.Source.Sources.ExternalMedia")
     {
-        return "Cd";
+        return "Mmc";
     }
     if (dbusSource == "xyz.openbmc_project.Control.Boot.Source.Sources.Network")
     {
@@ -757,7 +757,12 @@ inline int assignBootParameters(const std::shared_ptr<AsyncResp>& aResp,
     {
         bootMode = "xyz.openbmc_project.Control.Boot.Mode.Modes.Safe";
     }
-    else if (rfSource == "Cd")
+    else if (rfSource == "Mmc")
+    {
+        bootSource =
+            "xyz.openbmc_project.Control.Boot.Source.Sources.ExternalMedia";
+    }
+    else if (rfSource == "Ssd")
     {
         bootSource =
             "xyz.openbmc_project.Control.Boot.Source.Sources.ExternalMedia";
@@ -819,7 +824,7 @@ inline void getBootMode(const std::shared_ptr<AsyncResp>& aResp,
             aResp->res.jsonValue["Boot"]["BootSourceOverrideMode"] = "Legacy";
             aResp->res.jsonValue["Boot"]["BootSourceOverrideTarget@Redfish."
                                          "AllowableValues"] = {
-                "None", "Pxe", "Hdd", "Cd", "Diags", "BiosSetup", "Usb"};
+                "None", "Pxe", "Hdd", "Mmc", "Ssd","Diags", "BiosSetup", "Usb"};
 
             if (*bootModeStr !=
                 "xyz.openbmc_project.Control.Boot.Mode.Modes.Regular")
@@ -2124,7 +2129,7 @@ class Systems : public Node
                   asyncResp->res.jsonValue["Boot"]["BootSourceOverrideEnabled"] ="Continuous";
                   asyncResp->res.jsonValue["Boot"]["BootSourceOverrideMode"] = "Legacy";
                   asyncResp->res.jsonValue["Boot"]["BootSourceOverrideTarget@Redfish."
-                                            "AllowableValues"] = {"None", "Pxe", "Hdd", "Cd", "Diags", "BiosSetup", "Usb"};
+                                            "AllowableValues"] = {"None", "Pxe", "Hdd", "Mmc","Ssd", "Diags", "BiosSetup", "Usb"};
                   crow::connections::systemBus->async_method_call(
                      [asyncResp](const boost::system::error_code ec3, 
                        const std::variant<std::string>& property3) 
