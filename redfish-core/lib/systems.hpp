@@ -2157,21 +2157,21 @@ class Systems : public Node
             "org.freedesktop.DBus.Properties", "Get",
             "xyz.openbmc_project.NF.Blade.Power", "Attached");
 
-        /*res.jsonValue["Processors"] = {
+        res.jsonValue["Processors"] = {
             {"@odata.id", "/redfish/v1/Systems/system/Processors"}};
         res.jsonValue["Memory"] = {
             {"@odata.id", "/redfish/v1/Systems/system/Memory"}};
         res.jsonValue["Storage"] = {
-            {"@odata.id", "/redfish/v1/Systems/system/Storage"}};*/
+            {"@odata.id", "/redfish/v1/Systems/system/Storage"}};
 
-        /*res.jsonValue["LogServices"] = {
+        res.jsonValue["LogServices"] = {
             {"@odata.id", "/redfish/v1/Systems/system/LogServices"}};
 
         res.jsonValue["Bios"] = {
             {"@odata.id", "/redfish/v1/Systems/system/Bios"}};
 
         res.jsonValue["Links"]["ManagedBy"] = {
-            {{"@odata.id", "/redfish/v1/Managers/bmc"}}};*/
+            {{"@odata.id", "/redfish/v1/Managers/bmc"}}};
 
         /*constexpr const std::array<const char*, 4> inventoryForSystems = {
             "xyz.openbmc_project.Inventory.Item.Dimm",
