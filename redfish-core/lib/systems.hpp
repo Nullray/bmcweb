@@ -2173,7 +2173,7 @@ class Systems : public Node
         res.jsonValue["Links"]["ManagedBy"] = {
             {{"@odata.id", "/redfish/v1/Managers/bmc"}}};
 
-        /*constexpr const std::array<const char*, 4> inventoryForSystems = {
+        constexpr const std::array<const char*, 4> inventoryForSystems = {
             "xyz.openbmc_project.Inventory.Item.Dimm",
             "xyz.openbmc_project.Inventory.Item.Cpu",
             "xyz.openbmc_project.Inventory.Item.Drive",
@@ -2196,13 +2196,13 @@ class Systems : public Node
             "xyz.openbmc_project.ObjectMapper", "GetSubTreePaths", "/",
             int32_t(0), inventoryForSystems);
 
-        health->populate();*/
+        health->populate();
 
-        /*getMainChassisId(asyncResp, [](const std::string& chassisId,
+        getMainChassisId(asyncResp, [](const std::string& chassisId,
                                        const std::shared_ptr<AsyncResp>& aRsp) {
             aRsp->res.jsonValue["Links"]["Chassis"] = {
                 {{"@odata.id", "/redfish/v1/Chassis/" + chassisId}}};
-        });*/
+        });
 
         /*getLocationIndicatorActive(asyncResp);
         // TODO (Gunnar): Remove IndicatorLED after enough time has passed
